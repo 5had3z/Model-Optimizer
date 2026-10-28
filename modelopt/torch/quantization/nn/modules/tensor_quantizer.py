@@ -64,6 +64,7 @@ from ...tensor_quant import (
 )
 from ...utils import is_torch_export_mode
 from ...utils.numeric_utils import E4M3_MAX, fp8_max_for_normalization
+from ...utils.weight_cache import cached_fake_quantize
 from ..functional import normalized_hadamard_transform
 
 # torch.finfo(...).tiny gives the smallest normal E4M3 value; scale clamping needs
@@ -1208,6 +1209,8 @@ class TensorQuantizer(nn.Module):
         # Early return if nothing is collected during the forward (e.g. MoE)
         if inputs.numel() == 0:
             return inputs
+        # The weight cache keys on this tensor, not on the fresh ones (scaled, padded) made from it below.
+        cache_source = inputs
 
         # Activation scaling for smoothquant
         if self.pre_quant_scale is not None:
@@ -1273,7 +1276,7 @@ class TensorQuantizer(nn.Module):
                 inputs = inputs.contiguous()
             if self.fake_quant:
                 with same_device_as(inputs):
-                    outputs = self._fake_quantize(inputs)
+                    outputs = cached_fake_quantize(self, inputs, cache_source)
             elif not self._dequantize:
                 outputs = self._real_quantize(inputs)
             else:
